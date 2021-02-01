@@ -5,6 +5,8 @@
 # 《python 灰帽子》
 # 《家用路由器0day漏洞挖掘》
 # https://github.com/wangzery/SearchOverflow/blob/master/SearchOverflow.py
+# https://github.com/giantbranch/mipsAudit
+# IDAPython mipsAudit (for IDA pro 7.5 &python3)
 
 from idaapi import *
 from prettytable import PrettyTable
@@ -78,9 +80,9 @@ def printFunc(func_name):
     return string1 + "\n" + string2 + '=' * strlen + "\n" + string1
 
 def getFuncAddr(func_name):
-    func_addr = LocByName(func_name)
+    func_addr = get_name_ea_simple(func_name)
     if func_addr != BADADDR:
-        print printFunc(func_name)
+        print (printFunc(func_name))
         # print func_name + " Addr : 0x %x" % func_addr
         return func_addr
     return False
@@ -103,12 +105,12 @@ def getFormatString(addr):
     #define o_idpspec4   12  // IDP specific type
     #define o_idpspec5   13  // IDP specific type
     # 如果第二个不是立即数则下一个
-    if(GetOpType(addr ,op_num) != 5):
+    if(get_operand_type(addr ,op_num) != 5):
         op_num = op_num + 1
-    if GetOpType(addr ,op_num) != 5:
+    if get_operand_type(addr ,op_num) != 5:
         return "get fail"
-    op_string = GetOpnd(addr, op_num).split(" ")[0].split("+")[0].split("-")[0].replace("(", "")
-    string_addr = LocByName(op_string)
+    op_string = print_operand(addr, op_num).split(" ")[0].split("+")[0].split("-")[0].replace("(", "")
+    string_addr = get_name_ea_simple(op_string)
     if string_addr == BADADDR:
         return "get fail"
     string = str(GetString(string_addr))
@@ -121,14 +123,14 @@ def getArgAddr(start_addr, regNum):
     count = 0
     reg = "$a" + str(regNum)
     # try to get in the next 
-    next_addr = Rfirst(start_addr)
-    if next_addr != BADADDR and  reg == GetOpnd(next_addr, 0):
+    next_addr = get_first_cref_from(start_addr)
+    if next_addr != BADADDR and  reg == print_operand(next_addr, 0):
         return next_addr
     # try to get before
-    before_addr = RfirstB(start_addr)
+    before_addr = get_first_cref_to(start_addr)
     while before_addr != BADADDR:
-        if reg == GetOpnd(before_addr, 0):
-            Mnemonics = GetMnem(before_addr)
+        if reg == print_operand(before_addr, 0):
+            Mnemonics = print_insn_mnem(before_addr)
             if Mnemonics[0:2] in mipscondition:
                 pass
             elif Mnemonics[0:1] == "j":
@@ -138,7 +140,7 @@ def getArgAddr(start_addr, regNum):
         count = count + 1
         if count > scan_deep:
             break 
-        before_addr = RfirstB(before_addr)
+        before_addr = get_first_cref_to(before_addr)
     return BADADDR
 
 
@@ -146,19 +148,19 @@ def getArg(start_addr, regNum):
     mipsmov = ["move", "lw", "li", "lb", "lui", "lhu", "lbu", "la"]
     arg_addr = getArgAddr(start_addr, regNum)
     if arg_addr != BADADDR:
-        Mnemonics = GetMnem(arg_addr) 
+        Mnemonics = print_insn_mnem(arg_addr) 
         if Mnemonics[0:3] == "add":
-            if GetOpnd(arg_addr, 2) == "":
-                arg = GetOpnd(arg_addr, 0) + "+" + GetOpnd(arg_addr, 1)
+            if print_operand(arg_addr, 2) == "":
+                arg = print_operand(arg_addr, 0) + "+" + print_operand(arg_addr, 1)
             else:
-                arg = GetOpnd(arg_addr, 1) + "+" +  GetOpnd(arg_addr, 2)
+                arg = print_operand(arg_addr, 1) + "+" +  print_operand(arg_addr, 2)
         elif Mnemonics[0:3] == "sub":
-            if GetOpnd(arg_addr, 2) == "":
-                arg = GetOpnd(arg_addr, 0) + "-" + GetOpnd(arg_addr, 1)
+            if print_operand(arg_addr, 2) == "":
+                arg = print_operand(arg_addr, 0) + "-" + print_operand(arg_addr, 1)
             else:
-                arg = GetOpnd(arg_addr, 1) + "-" +  GetOpnd(arg_addr, 2)
+                arg = print_operand(arg_addr, 1) + "-" +  print_operand(arg_addr, 2)
         elif Mnemonics in mipsmov:
-            arg = GetOpnd(arg_addr, 1) 
+            arg = print_operand(arg_addr, 1) 
         else:
             arg = GetDisasm(arg_addr).split("#")[0]
         MakeComm(arg_addr, "addr: 0x%x " % start_addr  + "-------> arg" + str((int(regNum)+1)) + " : " + arg)
@@ -181,11 +183,11 @@ def audit(func_name):
     elif func_name in format_function_offset_dict:
         arg_num = format_function_offset_dict[func_name] + 1
     else:
-        print "The %s function didn't write in the describe arg num of function array,please add it to,such as add to `two_arg_function` arary" % func_name
+        print ("The %s function didn't write in the describe arg num of function array,please add it to,such as add to `two_arg_function` arary" % func_name)
         return
     # mispcall = ["jal", "jalr", "bal", "jr"]
     table_head = ["func_name", "addr"]
-    for num in xrange(0,arg_num):
+    for num in range(0,arg_num):
         table_head.append("arg"+str(num+1))
     if func_name in format_function_offset_dict:
         table_head.append("format&value[string_addr, num of '%', fmt_arg...]")
@@ -193,17 +195,17 @@ def audit(func_name):
     table = PrettyTable(table_head)
 
     # get first call
-    call_addr = RfirstB(func_addr)
+    call_addr = get_first_cref_to(func_addr)
     while call_addr != BADADDR:
         # set color ———— green (red=0x0000ff,blue = 0xff0000)
-        SetColor(call_addr, CIC_ITEM, 0x00ff00)
+        set_color(call_addr, CIC_ITEM, 0x00ff00)
         # set break point
         # AddBpt(call_addr)
         # DelBpt(call_addr)
 
         # if you want to use condition
         # SetBptCnd(ea, 'strstr(GetString(Dword(esp+4),-1, 0), "SAEXT.DLL") != -1')
-        Mnemonics = GetMnem(call_addr)
+        Mnemonics = print_insn_mnem(call_addr)
         # print "Mnemonics : %s" % Mnemonics
         # if Mnemonics in mispcall:
         if Mnemonics[0:1] == "j" or Mnemonics[0:1] == "b":
@@ -213,13 +215,13 @@ def audit(func_name):
             else:
                 info = auditAddr(call_addr, func_name, arg_num)
             table.add_row(info)
-        call_addr = RnextB(func_addr, call_addr)
-    print table
+        call_addr = get_next_cref_to(func_addr, call_addr)
+    print (table)
     # data_addr = DfirstB(func_addr)
     # while data_addr != BADADDR:
-    #     Mnemonics = GetMnem(data_addr)
+    #     Mnemonics = print_insn_mnem(data_addr)
     #     if DEBUG:
-    #         print "Data Mnemonics : %s" % GetMnem(data_addr)
+    #         print "Data Mnemonics : %s" % print_insn_mnem(data_addr)
     #         print "Data addr : 0x %s" % data_addr
     #     data_addr = DnextB(func_addr, data_addr)
 
@@ -227,13 +229,13 @@ def auditAddr(call_addr, func_name, arg_num):
     addr = "0x%x" % call_addr
     ret_list = [func_name, addr]
     # local buf size
-    local_buf_size = GetFunctionAttr(call_addr , FUNCATTR_FRSIZE)
+    local_buf_size = get_func_attr(call_addr , FUNCATTR_FRSIZE)
     if local_buf_size == BADADDR :
         local_buf_size = "get fail"
     else:
         local_buf_size = "0x%x" % local_buf_size
     # get arg
-    for num in xrange(0,arg_num):
+    for num in range(0,arg_num):
         ret_list.append(getArg(call_addr, num)) 
     ret_list.append(local_buf_size)
     return ret_list
@@ -242,13 +244,13 @@ def auditFormat(call_addr, func_name, arg_num):
     addr = "0x%x" % call_addr
     ret_list = [func_name, addr]
     # local buf size
-    local_buf_size = GetFunctionAttr(call_addr , FUNCATTR_FRSIZE)
+    local_buf_size = get_func_attr(call_addr , FUNCATTR_FRSIZE)
     if local_buf_size == BADADDR :
         local_buf_size = "get fail"
     else:
         local_buf_size = "0x%x" % local_buf_size
     # get arg
-    for num in xrange(0,arg_num):
+    for num in range(0,arg_num):
         ret_list.append(getArg(call_addr, num)) 
     arg_addr = getArgAddr(call_addr, format_function_offset_dict[func_name])
     string_and_addr =  getFormatString(arg_addr)
@@ -264,7 +266,7 @@ def auditFormat(call_addr, func_name, arg_num):
         # mips arg reg is from a0 to a3
         if fmt_num > 3:
             fmt_num = fmt_num - format_function_offset_dict[func_name] - 1
-        for num in xrange(0,fmt_num):
+        for num in range(0,fmt_num):
             if arg_num + num > 3:
                 break
             format_and_value.append(getArg(call_addr, arg_num + num))
@@ -287,20 +289,20 @@ def mipsAudit():
             |_|                                 
                     code by giantbranch 2018.05
     '''
-    print start
-    print "Auditing dangerous functions ......"
+    print (start)
+    print ("Auditing dangerous functions ......")
     for func_name in dangerous_functions:
         audit(func_name)
         
-    print "Auditing attention function ......"
+    print ("Auditing attention function ......")
     for func_name in attention_function:
         audit(func_name)
 
-    print "Auditing command execution function ......"
+    print ("Auditing command execution function ......")
     for func_name in command_execution_function:
         audit(func_name)
         
-    print "Finished! Enjoy the result ~"
+    print ("Finished! Enjoy the result ~")
 
 # 判断架构的代码，以后或许用得上
 # info = idaapi.get_inf_structure()
