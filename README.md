@@ -9,7 +9,6 @@
 可能会有bug，欢迎大家完善。
 
 版权归原作者(https://github.com/giantbranch/mipsAudit) 和 https://github.com/t3ls/mipsAudit
-我只是搬运工。还搬运了一个MipsROP的脚本,仅适用于IDA pro 7.5 &python3.
 
 ## 功能
 
@@ -73,3 +72,11 @@ File - Script file
 双击地址即可跳到对应的代码处
 
 ![1561006887117](./1561006887117.png)
+
+## MIPS ROP Gadgets查找工具
+我只是一个搬运工。
+还搬运了一个MipsROP的脚本,仅适用于IDA pro 7.5 &python3.
+使用方法: copy mipsrop.py到 IDAPro7.5\plugins目录。
+使用前要先"激活".有两个地方可以激活。
+1. Search -> mips rop gadgets
+2. Edit -> Plugins -> MIPS ROP Finder
