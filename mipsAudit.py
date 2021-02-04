@@ -6,11 +6,21 @@
 # 《家用路由器0day漏洞挖掘》
 # https://github.com/wangzery/SearchOverflow/blob/master/SearchOverflow.py
 # https://github.com/giantbranch/mipsAudit
+# https://github.com/t3ls/mipsAudit
 # IDAPython mipsAudit (for IDA pro 7.5 &python3)
 
 from idaapi import *
+import idaapi
+import idc
 from prettytable import PrettyTable
 
+import ida_search
+from idc import (
+    print_operand
+)
+from ida_bytes import (
+    get_strlit_contents
+)
 
 DEBUG = True
 
@@ -73,14 +83,66 @@ format_function_offset_dict = {
     "printf":0
 }
 
+
+try:
+    class MipsAudit_Menu_Context(idaapi.action_handler_t):
+        def __init__(self):
+            idaapi.action_handler_t.__init__(self)
+
+        @classmethod
+        def get_name(self):
+            return self.__name__
+
+        @classmethod
+        def get_label(self):
+            return self.label
+
+        @classmethod
+        def register(self, plugin, label):
+            self.plugin = plugin
+            self.label = label
+            instance = self()
+            return idaapi.register_action(idaapi.action_desc_t(
+                self.get_name(),  # Name. Acts as an ID. Must be unique.
+                instance.get_label(),  # Label. That's what users see.
+                instance  # Handler. Called when activated, and for updating
+            ))
+
+        @classmethod
+        def unregister(self):
+            """Unregister the action.
+            After unregistering the class cannot be used.
+            """
+            idaapi.unregister_action(self.get_name())
+
+        @classmethod
+        def activate(self, ctx):
+            # dummy method
+            return 1
+
+        @classmethod
+        def update(self, ctx):
+            if ctx.form_type == idaapi.BWN_DISASM:
+                return idaapi.AST_ENABLE_FOR_WIDGET
+            return idaapi.AST_DISABLE_FOR_WIDGET
+
+    class MIPS_Searcher(MipsAudit_Menu_Context):
+        def activate(self, ctx):
+            self.plugin.run()
+            return 1
+
+except:
+    pass
+
+
 def printFunc(func_name):
     string1 = "========================================"
-    string2 = "========== Aduiting " + func_name + " "
+    string2 = "========== Auditing " + func_name + " "
     strlen = len(string1) - len(string2)
     return string1 + "\n" + string2 + '=' * strlen + "\n" + string1
 
 def getFuncAddr(func_name):
-    func_addr = get_name_ea_simple(func_name)
+    func_addr = idc.get_name_ea_simple(func_name)
     if func_addr != BADADDR:
         print (printFunc(func_name))
         # print func_name + " Addr : 0x %x" % func_addr
@@ -105,15 +167,15 @@ def getFormatString(addr):
     #define o_idpspec4   12  // IDP specific type
     #define o_idpspec5   13  // IDP specific type
     # 如果第二个不是立即数则下一个
-    if(get_operand_type(addr ,op_num) != 5):
+    if(idc.get_operand_type(addr ,op_num) != 5):
         op_num = op_num + 1
-    if get_operand_type(addr ,op_num) != 5:
+    if idc.get_operand_type(addr ,op_num) != 5:
         return "get fail"
     op_string = print_operand(addr, op_num).split(" ")[0].split("+")[0].split("-")[0].replace("(", "")
-    string_addr = get_name_ea_simple(op_string)
+    string_addr = idc.get_name_ea_simple(op_string)
     if string_addr == BADADDR:
         return "get fail"
-    string = str(GetString(string_addr))
+    string = str(get_strlit_contents(string_addr, -1, STRTYPE_TERMCHR))
     return [string_addr, string]
 
 
@@ -163,7 +225,7 @@ def getArg(start_addr, regNum):
             arg = print_operand(arg_addr, 1) 
         else:
             arg = GetDisasm(arg_addr).split("#")[0]
-        MakeComm(arg_addr, "addr: 0x%x " % start_addr  + "-------> arg" + str((int(regNum)+1)) + " : " + arg)
+        set_cmt(arg_addr, "addr: 0x%x " % start_addr  + "-------> arg" + str((int(regNum)+1)) + " : " + arg, 0)
         return arg
     else:
         return "get fail"
@@ -198,7 +260,7 @@ def audit(func_name):
     call_addr = get_first_cref_to(func_addr)
     while call_addr != BADADDR:
         # set color ———— green (red=0x0000ff,blue = 0xff0000)
-        set_color(call_addr, CIC_ITEM, 0x00ff00)
+        idc.set_color(call_addr, idc.CIC_ITEM, 0x00ff00)
         # set break point
         # AddBpt(call_addr)
         # DelBpt(call_addr)
@@ -229,7 +291,7 @@ def auditAddr(call_addr, func_name, arg_num):
     addr = "0x%x" % call_addr
     ret_list = [func_name, addr]
     # local buf size
-    local_buf_size = get_func_attr(call_addr , FUNCATTR_FRSIZE)
+    local_buf_size = idc.get_func_attr(call_addr , idc.FUNCATTR_FRSIZE)
     if local_buf_size == BADADDR :
         local_buf_size = "get fail"
     else:
@@ -244,7 +306,7 @@ def auditFormat(call_addr, func_name, arg_num):
     addr = "0x%x" % call_addr
     ret_list = [func_name, addr]
     # local buf size
-    local_buf_size = get_func_attr(call_addr , FUNCATTR_FRSIZE)
+    local_buf_size = idc.get_func_attr(call_addr , idc.FUNCATTR_FRSIZE)
     if local_buf_size == BADADDR :
         local_buf_size = "get fail"
     else:
@@ -304,6 +366,60 @@ def mipsAudit():
         
     print ("Finished! Enjoy the result ~")
 
+m_initialized = False
+
+class MipsAudit_Plugin_t(idaapi.plugin_t):
+    comment = "MIPS Audit plugin for IDA Pro"
+    help = "todo"
+    wanted_name = "mipsAudit"
+    wanted_hotkey = "Ctrl-Alt-M"
+    flags = idaapi.PLUGIN_KEEP
+
+    def init(self):
+        global m_initialized
+
+        # register popup menu handlers
+        try:
+            MIPS_Searcher.register(self, "mipsAudit")
+        except:
+            pass
+
+        if m_initialized is False:
+            m_initialized = True
+            idaapi.register_action(idaapi.action_desc_t(
+                "mipsAudit",
+                "Find MIPS Audit func",
+                MIPS_Searcher(),
+                None,
+                None,
+                0))
+            idaapi.attach_action_to_menu("Search", "mipsAudit", idaapi.SETMENU_APP)
+            print("=" * 80)
+            start = '''
+                   _              _             _ _ _   
+         _ __ ___ (_)_ __  ___   / \  _   _  __| (_) |_ 
+        | '_ ` _ \| | '_ \/ __| / _ \| | | |/ _` | | __|
+        | | | | | | | |_) \__ \/ ___ \ |_| | (_| | | |_ 
+        |_| |_| |_|_| .__/|___/_/   \_\__,_|\__,_|_|\__|
+                    |_|                                 
+                            code by giantbranch 2018.05
+                            edit by t3ls        2020.12
+            '''
+            print(start)
+            print("=" * 80)
+
+        return idaapi.PLUGIN_KEEP
+
+    def term(self):
+        pass
+
+    def run(self, arg):
+        info = idaapi.get_inf_structure()
+        if 'mips' in info.procName:
+            mipsAudit()
+        else:
+            print('mipsAudit is not supported on the current arch')
+
 # 判断架构的代码，以后或许用得上
 # info = idaapi.get_inf_structure()
 
@@ -323,4 +439,8 @@ def mipsAudit():
 # print 'Processor: {}, {}bit, {} endian'.format(info.procName, bits, endian)
 # # Result: Processor: mipsr, 32bit, big endian
 
-mipsAudit()
+def PLUGIN_ENTRY():
+    return MipsAudit_Plugin_t()
+
+if __name__ == '__main__':
+    mipsAudit()
