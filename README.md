@@ -8,8 +8,8 @@
 
 可能会有bug，欢迎大家完善。
 
-2021年2月1日 : 针对IDA Pro 7.5做了一点修改。
 版权归原作者(https://github.com/giantbranch/mipsAudit) 和 https://github.com/t3ls/mipsAudit
+我只是搬运工。
 
 ## 功能
 
