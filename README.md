@@ -9,7 +9,7 @@
 可能会有bug，欢迎大家完善。
 
 版权归原作者(https://github.com/giantbranch/mipsAudit) 和 https://github.com/t3ls/mipsAudit
-我只是搬运工。
+我只是搬运工。还搬运了一个MipsROP的脚本,仅适用于IDA pro 7.5 &python3.
 
 ## 功能
 
