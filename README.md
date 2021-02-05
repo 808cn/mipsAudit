@@ -87,6 +87,10 @@ File - Script file
 使用mipsrop.help()查看帮助。
 
 常用功能:
+
 Python> mipsrop.stackfinders()
+
 Python> mipsrop.find("li $a0, 1")
+
 Python> mipsrop.find("move $t9, $s2")
+
