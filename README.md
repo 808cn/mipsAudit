@@ -75,8 +75,18 @@ File - Script file
 
 ## MIPS ROP Gadgets查找工具
 我只是一个搬运工。
+
 还搬运了一个MipsROP的脚本,仅适用于IDA pro 7.5 &python3.
+
 使用方法: copy mipsrop.py到 IDAPro7.5\plugins目录。
 使用前要先"激活".有两个地方可以激活。
 1. Search -> mips rop gadgets
 2. Edit -> Plugins -> MIPS ROP Finder
+
+激活后即可在IDApython中使用该插件，
+使用mipsrop.help()查看帮助。
+
+常用功能:
+Python> mipsrop.stackfinders()
+Python> mipsrop.find("li $a0, 1")
+Python> mipsrop.find("move $t9, $s2")
